@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const program = require('commander')
+const program = require('commander') // 编写指令，处理命令行的
 
 program
     .command('create <project-name>')
