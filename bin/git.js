@@ -2,9 +2,10 @@ const inquirer = require('inquirer')
 const api = require('./api')
 const ora = require('ora')
 const downloadGit = require('download-git-repo')
-const execa = require('execa')
+const execa = require('execa') // 调用shell和本地外部程序的javascript封装
 const path = require('path')
-const { command } = require('commander')
+const vuePath = require.resolve('@vue/cli/bin/vue')
+// const { command } = require('commander')
 
 async function createGitProject (name) {
     const {desc} = await inquirer.prompt({
@@ -22,7 +23,6 @@ async function createGitProject (name) {
             projectName: res.path_with_namespace,
             projectId: res.id
         }
-        console.log(obj)
         spinner.succeed(`👏👏 创建git仓库成功!`);
         return obj
     }).catch(err => {
@@ -30,59 +30,59 @@ async function createGitProject (name) {
     })
 }
 
-async function getTemplate (targetDir, gitPath) {
-    // let list = await api.get('https://git.qutoutiao.net/api/v4/groups/1039/projects')
-    // let types = list.map(item => `${item.name}`);
-    // let repo = list[types.indexOf('withdraw-h5-template')];
-    // return repo
+/**
+ * 
+ * 方式1 基于本地preset生成模版 第一步拉下模版 第二步执行--preset
+ * 方式2 基于远程git仓库生成模版 直接执行--prest git地址
+ */
+async function getTemplateOnLocal (targetDir, gitPath, name) {
     const spinner = ora('🚀  初始化模板...')
+    // spinner.start()
     try {
-        spinner.start()
+        // 拉取模版
         await new Promise((resolve, reject) => {
-            downloadGit(gitPath, targetDir, { clone: true } ,error => {
+            downloadGit(gitPath, targetDir + '-template', { clone: true } ,error => {
               if (error) {
                 reject(error)
               }
               else {
-                resolve(targetDir)
+                resolve(targetDir + '-template')
               }
             })
-          })
-      
-        spinner.succeed('初始化成功')
-    } catch ({message = '初始化模版失败'}) {
-        spinner.fail(message)
+        })
+        // 初始化模版
+        //    因为我写的模版是一个preset 所以执行一下
+        await execa(vuePath, ['create', '--preset', `./${name}-template`, name, '-c', '-n'], {stdio: 'inherit'})
+        spinner.succeed('初始化模版成功')
+    } catch (e) {
+        spinner.fail(`失败：${message}`)
         process.exit()
     }
-    // try {
-    //     await execa(
-    //         vuePath,
-    //         ['create', '-p', gitTemplatePath, name, '-c', '-n', '-r', 'http://nexus.qutoutiao.net/repository/qtt/'],
-    //         {
-    //             stdio: 'inherit',
-    //             env
-    //         }
-    //     )
-    //     console.log('拉取成功！')
-    // } catch (e) {
-    //     console.log('拉取失败——！', e)
-    // }
 }
 
-async function addTemplateToGit (name) {
+async function getTemplateOnGitPath (targetDir, gitPath, name) {
+    try {
+        await execa(vuePath, ['create', '--preset', gitPath, name, '-c', '-n'], {stdio: 'inherit'})
+    } catch (error) {
+        console.log('模版初始化失败——'+error)
+    }
+}
+
+async function addTemplateToGit (targetDir, name) {
     const spinner = ora('🚀  提交模版...')
     spinner.start()
     const gitPath = `git@gitlab.com:DarLingHan/${name}.git`
-    execa('git', 'init', {cwd: path.join(process.cwd(), name)})
-    execa('git', 'add', '-A', {cwd: path.join(process.cwd(), name)})
-    execa('git', 'commit', '-m', 'init', {cwd: path.join(process.cwd(), name)})
-    execa('git', 'remote', 'add', 'origin', gitPath, {cwd: path.join(process.cwd(), name)})
-    execa('git', 'push', '--set-upstream', 'origin', 'master', {cwd: path.join(process.cwd(), name)})
+    await execa('git', ['init'], {cwd: targetDir})
+    await execa('git', ['add', '-A'], {cwd: targetDir})
+    await execa('git', ['commit', '-m', 'init'], {cwd: targetDir})
+    await execa('git', ['remote', 'add', 'origin', gitPath], {cwd: targetDir})
+    await execa('git', ['push', '--set-upstream', 'origin', 'master'], {cwd: targetDir})
     spinner.succeed('提交成功')
 }
 
 module.exports = {
-    getTemplate,
+    getTemplateOnLocal,
+    getTemplateOnGitPath,
     createGitProject,
     addTemplateToGit
 }
